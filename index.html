@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Food Distribution Dashboard</title>
+
+  <!-- Leaflet (map) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-sA+e2a8gICnP4xqH6qHh7v2G6f2Hc3wq3k2b7qJQ6Lw=" crossorigin=""/>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#f4f6f9;
+      --card:#fff;
+      --accent:#0ea5a4;
+      --muted:#6b7280;
+    }
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    body{background:var(--bg);color:#0f172a;padding:18px;}
+    header{display:flex;align-items:center;gap:16px;margin-bottom:18px;}
+    header h1{margin:0;font-size:20px;}
+    .container{display:grid;grid-template-columns:320px 1fr;gap:18px;}
+    /* left column */
+    .panel{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 6px 18px rgba(2,6,23,0.06);}
+    .left .panel{margin-bottom:12px}
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .stat{background:linear-gradient(180deg,rgba(14,165,164,0.06),transparent);padding:10px;border-radius:8px;text-align:center}
+    .stat h3{margin:0;font-size:18px}
+    .form-row{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+    label{font-size:12px;color:var(--muted)}
+    input,select,textarea,button{padding:8px;border-radius:8px;border:1px solid #e6eef2;font-size:14px}
+    button{background:var(--accent);color:#fff;border:none;cursor:pointer}
+    button.secondary{background:#eef2f2;color:#08323a}
+    /* right column */
+    .top-row{display:flex;gap:12px;margin-bottom:12px}
+    .card{flex:1;padding:12px;border-radius:12px;background:var(--card);box-shadow:0 6px 18px rgba(2,6,23,0.04)}
+    #map{height:320px;border-radius:10px;overflow:hidden}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #eef2f6;text-align:left;font-size:13px}
+    .small{font-size:12px;color:var(--muted)}
+    .pill{display:inline-block;padding:6px 8px;border-radius:999px;background:#eefafa;color:#075f5e;font-weight:600;font-size:12px}
+    footer{margin-top:14px;font-size:12px;color:var(--muted)}
+    @media (max-width:900px){
+      .container{grid-template-columns:1fr; }
+      .stats{grid-template-columns:repeat(2,1fr)}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="https://upload.wikimedia.org/wikipedia/commons/7/73/Green_heart_font_awesome.svg" alt="" width="36" style="filter:invert(15%) sepia(15%) saturate(600%) hue-rotate(120deg);">
+    <h1>Food Distribution Dashboard — Serve Villages</h1>
+    <div style="margin-left:auto" class="small">Local storage demo • Safe for offline use</div>
+  </header>
+
+  <div class="container">
+    <div class="left">
+      <div class="panel">
+        <div class="stats" id="stats">
+          <div class="stat">
+            <div class="small">Meals Donated</div>
+            <h3 id="statMeals">0</h3>
+          </div>
+          <div class="stat">
+            <div class="small">Volunteers</div>
+            <h3 id="statVols">0</h3>
+          </div>
+          <div class="stat">
+            <div class="small">Scheduled</div>
+            <h3 id="statSched">0</h3>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin-top:0">Add Donation</h3>
+        <div class="form-row">
+          <label>Donor name</label>
+          <input id="donorName" placeholder="Ex: Ramesh" />
+        </div>
+        <div class="form-row">
+          <label>Meals (count)</label>
+          <input id="donationMeals" type="number" min="1" value="10" />
+        </div>
+        <div class="form-row">
+          <label>Village / Location name</label>
+          <input id="donationVillage" placeholder="Ex: Sundarpur" />
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="addDonation()">Add Donation</button>
+          <button class="secondary" onclick="seedSample()">Seed sample</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin-top:0">Volunteer Signup</h3>
+        <div class="form-row">
+          <label>Volunteer Name</label>
+          <input id="volName" placeholder="Ex: Asha" />
+        </div>
+        <div class="form-row">
+          <label>Phone / Contact</label>
+          <input id="volContact" placeholder="+91..." />
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="addVolunteer()">Add Volunteer</button>
+          <button class="secondary" onclick="exportData()">Export JSON</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="top-row">
+        <div class="card">
+          <h3 style="margin-top:0">Map — Distribution Sites</h3>
+          <div id="map"></div>
+          <div class="small" style="margin-top:8px">Click on map to add a distribution site (name will be asked).</div>
+        </div>
+
+        <div class="card" style="max-width:420px;">
+          <h3 style="margin-top:0">Schedule a Distribution</h3>
+          <div class="form-row">
+            <label>Site (pick from map or type)</label>
+            <input id="schedSite" placeholder="Sundarpur field center" />
+          </div>
+          <div class="form-row">
+            <label>Date & time</label>
+            <input id="schedDate" type="datetime-local" />
+          </div>
+          <div class="form-row">
+            <label>Meals to send</label>
+            <input id="schedMeals" type="number" min="1" value="50" />
+          </div>
+          <div style="display:flex;gap:8px">
+            <button onclick="addSchedule()">Schedule</button>
+            <button class="secondary" onclick="clearAll()">Clear All</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:12px;">
+        <h3 style="margin-top:0">Upcoming Distributions</h3>
+        <table id="schedTable">
+          <thead><tr><th>Site</th><th>Date</th><th>Meals</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="card" style="display:flex;gap:12px;align-items:flex-start;">
+        <div style="flex:1;">
+          <h3 style="margin-top:0">Donations (recent)</h3>
+          <table id="donTable">
+            <thead><tr><th>Donor</th><th>Meals</th><th>Village</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div style="width:300px;">
+          <h3 style="margin-top:0">Meals Over Time</h3>
+          <canvas id="mealsChart" height="180"></canvas>
+        </div>
+      </div>
+
+      <footer>
+        Built for rural food distribution. Data stored locally (browser). For production, connect to a secure backend and follow food safety & traceability guidelines. :contentReference[oaicite:1]{index=1}
+      </footer>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-o9N1jGQo0b2x5k1r7g+fJp0k+J3kq7c9QqkMw5x9m8A=" crossorigin=""></script>
+
+  <script>
+    // Simple in-browser data model with localStorage persistence
+    const STORAGE_KEY = 'food_dashboard_v1';
+    let state = {
+      donations: [],    // {id, donor, meals, village, time}
+      volunteers: [],   // {id, name, contact, time}
+      schedules: [],    // {id, site, datetime, meals, status}
+      sites: []         // {id, name, lat, lng}
+    };
+
+    // load
+    function loadState(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if(raw) state = JSON.parse(raw);
+      }catch(e){ console.warn('load error',e) }
+    }
+    function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+    // utilities
+    function uid(prefix='id'){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
+    function nowISO(){ return new Date().toISOString(); }
+
+    // stats render
+    function updateStats(){
+      const totalMeals = state.donations.reduce((s,d)=>s + Number(d.meals||0),0);
+      document.getElementById('statMeals').textContent = totalMeals;
+      document.getElementById('statVols').textContent = state.volunteers.length;
+      document.getElementById('statSched').textContent = state.schedules.filter(s=> s.status !== 'done').length;
+    }
+
+    // render donations & chart
+    function renderDonations(){
+      const tbody = document.querySelector('#donTable tbody'); tbody.innerHTML = '';
+      state.donations.slice().reverse().forEach(d=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(d.donor)}</td><td>${d.meals}</td><td>${escapeHtml(d.village||'—')}</td>
+                        <td><button onclick="removeDonation('${d.id}')">Remove</button></td>`;
+        tbody.appendChild(tr);
+      });
+      renderChart();
+    }
+
+    function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+    function removeDonation(id){
+      state.donations = state.donations.filter(d=>d.id !== id);
+      saveState(); renderDonations(); updateStats(); renderSchedules();
+    }
+
+    // volunteers
+    function renderVolunteers(){ /* could make a dedicated view */ updateStats(); }
+
+    // schedules
+    function renderSchedules(){
+      const tbody = document.querySelector('#schedTable tbody'); tbody.innerHTML = '';
+      state.schedules.slice().sort((a,b)=> new Date(a.datetime) - new Date(b.datetime)).forEach(s=>{
+        const tr = document.createElement('tr');
+        const dt = new Date(s.datetime);
+        tr.innerHTML = `<td>${escapeHtml(s.site)}</td>
+                        <td>${isNaN(dt)? 'Invalid' : dt.toLocaleString()}</td>
+                        <td>${s.meals}</td>
+                        <td>${s.status === 'done'? '<span class="pill">Done</span>' : '<span class="small">Planned</span>'}</td>
+                        <td>
+                          ${s.status !== 'done' ? `<button onclick="markDone('${s.id}')">Mark done</button>` : `<button onclick="undoDone('${s.id}')">Undo</button>`}
+                        </td>`;
+        tbody.appendChild(tr);
+      });
+      updateStats();
+    }
+    function markDone(id){ const s = state.schedules.find(x=>x.id===id); if(s){ s.status='done'; saveState(); renderSchedules(); } }
+    function undoDone(id){ const s = state.schedules.find(x=>x.id===id); if(s){ s.status='planned'; saveState(); renderSchedules(); } }
+
+    // add functions
+    function addDonation(){
+      const donor = document.getElementById('donorName').value.trim() || 'Anonymous';
+      const meals = Number(document.getElementById('donationMeals').value) || 0;
+      const village = document.getElementById('donationVillage').value.trim();
+      if(meals <= 0){ alert('Enter a valid meals count'); return; }
+      const obj = { id: uid('don'), donor, meals, village, time: nowISO() };
+      state.donations.push(obj);
+      saveState(); renderDonations(); updateStats();
+      // clear
+      document.getElementById('donorName').value=''; document.getElementById('donationMeals').value=10; document.getElementById('donationVillage').value='';
+    }
+
+    function addVolunteer(){
+      const name = document.getElementById('volName').value.trim();
+      const contact = document.getElementById('volContact').value.trim();
+      if(!name){ alert('Enter volunteer name'); return; }
+      state.volunteers.push({id:uid('vol'), name, contact, time:nowISO()});
+      saveState(); renderVolunteers(); document.getElementById('volName').value=''; document.getElementById('volContact').value='';
+    }
+
+    function addSchedule(){
+      const site = document.getElementById('schedSite').value.trim();
+      const datetime = document.getElementById('schedDate').value;
+      const meals = Number(document.getElementById('schedMeals').value);
+      if(!site || !datetime || meals <= 0){ alert('Complete site, date and meal count'); return; }
+      state.schedules.push({id:uid('sch'), site, datetime, meals, status:'planned'});
+      saveState(); renderSchedules(); document.getElementById('schedSite').value=''; document.getElementById('schedDate').value=''; document.getElementById('schedMeals').value=50;
+    }
+
+    // export
+    function exportData(){
+      const dataStr = JSON.stringify(state, null, 2);
+      const blob = new Blob([dataStr], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'food_dashboard_export.json'; a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function clearAll(){
+      if(!confirm('Clear all local data?')) return;
+      state = {donations:[],volunteers:[],schedules:[],sites:[]};
+      saveState(); renderDonations(); renderSchedules(); renderSites();
+    }
+
+    // sample seed
+    function seedSample(){
+      state.donations.push({id:uid('don'), donor:'Mitra Foods', meals:120, village:'Sundarpur', time:nowISO()});
+      state.donations.push({id:uid('don'), donor:'Anand Bakery', meals:40, village:'Basantpur', time:nowISO()});
+      state.volunteers.push({id:uid('vol'), name:'Asha', contact:'+919800000000', time:nowISO()});
+      state.schedules.push({id:uid('sch'), site:'Sundarpur', datetime:new Date(Date.now()+86400000).toISOString(), meals:100, status:'planned'});
+      saveState(); renderDonations(); renderSchedules(); renderSites();
+    }
+
+    // chart
+    let mealsChart = null;
+    function renderChart(){
+      const countsByDay = {};
+      state.donations.forEach(d=>{
+        const day = (new Date(d.time)).toISOString().slice(0,10);
+        countsByDay[day] = (countsByDay[day] || 0) + Number(d.meals||0);
+      });
+      const labels = Object.keys(countsByDay).sort();
+      const data = labels.map(l => countsByDay[l]);
+      const ctx = document.getElementById('mealsChart').getContext('2d');
+      if(mealsChart) mealsChart.destroy();
+      mealsChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Meals donated', data }] },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }
+      });
+    }
+
+    // --- Map (Leaflet) ---
+    let map, siteLayer;
+    function initMap(){
+      map = L.map('map').setView([21.0,79.0], 5); // central India initial view
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+      siteLayer = L.layerGroup().addTo(map);
+
+      map.on('click', async function(e){
+        const name = prompt('Name for this site (village or center):','New Site');
+        if(!name) return;
+        const site = {id:uid('site'), name, lat: e.latlng.lat, lng: e.latlng.lng};
+        state.sites.push(site); saveState(); renderSites();
+      });
+
+      renderSites();
+    }
+
+    function renderSites(){
+      siteLayer.clearLayers();
+      state.sites.forEach(s=>{
+        const marker = L.marker([s.lat,s.lng]).addTo(siteLayer);
+        marker.bindPopup(`<b>${escapeHtml(s.name)}</b><br><button onclick="useSite('${s.id}')">Use this site</button>`, {maxWidth:220});
+      });
+    }
+    // "use this site" from popup - finds site and puts in schedule site input
+    function useSite(id){
+      const s = state.sites.find(x=>x.id===id);
+      if(s) document.getElementById('schedSite').value = s.name;
+    }
+
+    // On load
+    loadState(); window.addEventListener('load', ()=>{
+      initMap();
+      renderDonations();
+      renderSchedules();
+      updateStats();
+      renderChart();
+    });
+
+    // allow global calls from inline handlers
+    window.addDonation = addDonation;
+    window.addVolunteer = addVolunteer;
+    window.addSchedule = addSchedule;
+    window.markDone = markDone;
+    window.undoDone = undoDone;
+    window.removeDonation = removeDonation;
+    window.seedSample = seedSample;
+    window.exportData = exportData;
+    window.clearAll = clearAll;
+    window.useSite = useSite;
+  </script>
+</body>
+</html>
